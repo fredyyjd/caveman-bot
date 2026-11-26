@@ -10,6 +10,21 @@ const CHECK_EVERY_MS = 60 * 1000;
 // One shared warning message per panel; it mentions everyone who currently has a no vote.
 const notices = createStore('legit-notices.json', {});
 
+// Runs tasks for the same panel one at a time, so fast vote/unvote clicks
+// can't overlap (send + delete racing each other).
+const locks = new Map();
+function withLock(key, fn) {
+  const prev = locks.get(key) || Promise.resolve();
+  const next = prev.catch(() => {}).then(fn);
+  locks.set(key, next);
+  next
+    .catch(() => {})
+    .then(() => {
+      if (locks.get(key) === next) locks.delete(key);
+    });
+  return next;
+}
+
 function reactionKey(emoji) {
   return emoji.id || emoji.name;
 }
@@ -82,7 +97,11 @@ async function fetchNoticeMessage(client, entry) {
   }
 }
 
-async function addVoter(panelMessage, userId) {
+function addVoter(panelMessage, userId) {
+  return withLock(panelMessage.id, () => addVoterNow(panelMessage, userId));
+}
+
+async function addVoterNow(panelMessage, userId) {
   const client = panelMessage.client;
   const entry = notices.get(panelMessage.id) || {
     channelId: panelMessage.channel.id,
@@ -109,9 +128,15 @@ async function addVoter(panelMessage, userId) {
   notices.set(panelMessage.id, entry);
 }
 
-async function removeVoter(client, panelId, userId) {
+function removeVoter(client, panelId, userId, onlyIfAt) {
+  return withLock(panelId, () => removeVoterNow(client, panelId, userId, onlyIfAt));
+}
+
+async function removeVoterNow(client, panelId, userId, onlyIfAt) {
   const entry = notices.get(panelId);
   if (!entry || !entry.voters[userId]) return;
+  // Timer checks pass the timestamp they saw; if the user re-voted since, leave them.
+  if (onlyIfAt && entry.voters[userId] !== onlyIfAt) return;
 
   delete entry.voters[userId];
   const ids = Object.keys(entry.voters);
@@ -188,7 +213,7 @@ async function checkNotices(client) {
 
     for (const [userId, at] of Object.entries(entry.voters)) {
       if (!stillVoting.has(userId)) {
-        await removeVoter(client, panelId, userId);
+        await removeVoter(client, panelId, userId, at);
         continue;
       }
 
@@ -204,7 +229,7 @@ async function checkNotices(client) {
 
         if (banned) console.log(`[legit] banned ${userId} (no vote, 24h passed)`);
         if (reaction) await reaction.users.remove(userId).catch(() => {});
-        await removeVoter(client, panelId, userId);
+        await removeVoter(client, panelId, userId, at);
       }
     }
   }
