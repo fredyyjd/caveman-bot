@@ -157,6 +157,7 @@ async function handleLegitReactionAdd(reaction, user) {
 
   const message = await loadPanel(reaction);
   if (!message) return;
+  startLegitTimer(message.client);
 
   const { tick, cross } = getEmojis(message.client);
   const key = reactionKey(reaction.emoji);
@@ -179,6 +180,7 @@ async function handleLegitReactionRemove(reaction, user) {
 
   const message = await loadPanel(reaction);
   if (!message) return;
+  startLegitTimer(message.client);
 
   const { cross } = getEmojis(message.client);
   if (reactionKey(reaction.emoji) !== cross.key) return;
@@ -195,6 +197,11 @@ async function checkNotices(client) {
   const all = notices.all();
 
   for (const [panelId, entry] of Object.entries(all)) {
+    if (!entry || !entry.voters) {
+      notices.delete(panelId); // leftover from an older version of the bot
+      continue;
+    }
+
     let panel;
     try {
       const channel = await client.channels.fetch(entry.channelId);
@@ -235,8 +242,10 @@ async function checkNotices(client) {
   }
 }
 
+let timer = null;
 function startLegitTimer(client) {
-  setInterval(() => {
+  if (timer) return;
+  timer = setInterval(() => {
     checkNotices(client).catch((err) => console.error('[legit] check failed:', err));
   }, CHECK_EVERY_MS);
 }
