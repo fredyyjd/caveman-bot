@@ -1,4 +1,4 @@
-const { EmbedBuilder } = require('discord.js');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('../config');
 const createStore = require('../utils/jsonStore');
 const { TITLE, getEmojis, buildEmbed } = require('../utils/legitPanel');
@@ -86,10 +86,19 @@ async function handleLegitReactionAdd(reaction, user) {
       ].join('\n')
     );
 
+  // Uses the existing support ticket flow (same handler as the ticket panel).
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ticket_open_support')
+      .setLabel('Open a ticket')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
   const sent = await message.channel
     .send({
       content: `<@${user.id}>`,
       embeds: [embed],
+      components: [row],
       allowedMentions: { users: [user.id] },
     })
     .catch((err) => {
