@@ -3,12 +3,22 @@ const config = require('../config');
 const createStore = require('../utils/jsonStore');
 const { TITLE, getEmojis, buildEmbed } = require('../utils/legitPanel');
 
-// userId -> { channelId, messageId } of the "you voted no" warning
+const BAN_AFTER_MS = 24 * 60 * 60 * 1000;
+const CHECK_EVERY_MS = 60 * 1000;
+
+// panelMessageId -> { channelId, messageId, voters: { userId: timestamp } }
+// One shared warning message per panel; it mentions everyone who currently has a no vote.
 const notices = createStore('legit-notices.json', {});
 
+function reactionKey(emoji) {
+  return emoji.id || emoji.name;
+}
+
 async function loadPanel(reaction) {
+  // Do NOT bail if the reaction itself can't be fetched: when the last
+  // reaction of an emoji is removed it no longer exists on the message.
+  if (reaction.partial) await reaction.fetch().catch(() => {});
   try {
-    if (reaction.partial) await reaction.fetch();
     if (reaction.message.partial) await reaction.message.fetch();
   } catch {
     return null;
@@ -29,21 +39,92 @@ async function loadPanel(reaction) {
   return message;
 }
 
-function reactionKey(emoji) {
-  return emoji.id || emoji.name;
+function buildNotice(voterIds) {
+  const supportChannelId = (config.legit || {}).supportChannelId;
+  const supportLine = supportChannelId
+    ? `Open a support ticket at <#${supportChannelId}>.`
+    : 'Open a support ticket.';
+
+  const embed = new EmbedBuilder()
+    .setColor(0xed4245)
+    .setDescription(
+      [
+        'You voted **no** for **are we legit**.',
+        'You have **24h** to provide proof or you will be **banned**.',
+        '',
+        supportLine,
+        '',
+        '-# voted by mistake just remove the vote !',
+      ].join('\n')
+    );
+
+  const row = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('ticket_open_support')
+      .setLabel('Open a ticket')
+      .setStyle(ButtonStyle.Secondary)
+  );
+
+  return {
+    content: voterIds.map((id) => `<@${id}>`).join(' '),
+    embeds: [embed],
+    components: [row],
+    allowedMentions: { users: voterIds },
+  };
 }
 
-async function deleteNotice(client, userId) {
-  const notice = notices.get(userId);
-  if (!notice) return;
-  notices.delete(userId);
-
+async function fetchNoticeMessage(client, entry) {
   try {
-    const channel = await client.channels.fetch(notice.channelId);
-    await channel.messages.delete(notice.messageId);
+    const channel = await client.channels.fetch(entry.channelId);
+    return await channel.messages.fetch(entry.messageId);
   } catch {
-    // already deleted or no access
+    return null;
   }
+}
+
+async function addVoter(panelMessage, userId) {
+  const client = panelMessage.client;
+  const entry = notices.get(panelMessage.id) || {
+    channelId: panelMessage.channel.id,
+    messageId: null,
+    voters: {},
+  };
+
+  entry.voters[userId] = Date.now();
+  const ids = Object.keys(entry.voters);
+
+  const existing = entry.messageId ? await fetchNoticeMessage(client, entry) : null;
+  if (existing) {
+    await existing.edit(buildNotice(ids)).catch((err) => console.error('[legit] edit notice failed:', err.message));
+  } else {
+    const sent = await panelMessage.channel
+      .send(buildNotice(ids))
+      .catch((err) => {
+        console.error('[legit] could not post no vote:', err.message);
+        return null;
+      });
+    if (sent) entry.messageId = sent.id;
+  }
+
+  notices.set(panelMessage.id, entry);
+}
+
+async function removeVoter(client, panelId, userId) {
+  const entry = notices.get(panelId);
+  if (!entry || !entry.voters[userId]) return;
+
+  delete entry.voters[userId];
+  const ids = Object.keys(entry.voters);
+  const msg = await fetchNoticeMessage(client, entry);
+
+  if (!ids.length) {
+    notices.delete(panelId);
+    if (msg) await msg.delete().catch(() => {});
+    return;
+  }
+
+  notices.set(panelId, entry);
+  if (msg) await msg.edit(buildNotice(ids)).catch(() => {});
 }
 
 async function handleLegitReactionAdd(reaction, user) {
@@ -65,48 +146,7 @@ async function handleLegitReactionAdd(reaction, user) {
     return;
   }
 
-  // Voted no. Voting yes first does not cancel it - only removing the no vote does.
-  if (notices.get(user.id)) return;
-
-  const supportChannelId = (config.legit || {}).supportChannelId;
-  const supportLine = supportChannelId
-    ? `Open a support ticket at <#${supportChannelId}>.`
-    : 'Open a support ticket.';
-
-  const embed = new EmbedBuilder()
-    .setColor(0xed4245)
-    .setDescription(
-      [
-        'You voted **no** for **are we legit**.',
-        'You have **24h** to provide proof or you will be **banned**.',
-        '',
-        supportLine,
-        '',
-        '-# voted by mistake just remove the vote !',
-      ].join('\n')
-    );
-
-  // Uses the existing support ticket flow (same handler as the ticket panel).
-  const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId('ticket_open_support')
-      .setLabel('Open a ticket')
-      .setStyle(ButtonStyle.Secondary)
-  );
-
-  const sent = await message.channel
-    .send({
-      content: `<@${user.id}>`,
-      embeds: [embed],
-      components: [row],
-      allowedMentions: { users: [user.id] },
-    })
-    .catch((err) => {
-      console.error('[legit] could not post no vote:', err.message);
-      return null;
-    });
-
-  if (sent) notices.set(user.id, { channelId: sent.channel.id, messageId: sent.id });
+  await addVoter(message, user.id);
 }
 
 async function handleLegitReactionRemove(reaction, user) {
@@ -118,8 +158,62 @@ async function handleLegitReactionRemove(reaction, user) {
   const { cross } = getEmojis(message.client);
   if (reactionKey(reaction.emoji) !== cross.key) return;
 
-  // No vote removed -> delete the warning, no ban.
-  await deleteNotice(message.client, user.id);
+  // No vote removed -> take them off the warning (deleted if nobody is left). No ban.
+  await removeVoter(message.client, message.id, user.id);
 }
 
-module.exports = { handleLegitReactionAdd, handleLegitReactionRemove };
+// Runs every minute: drops people who removed their no vote (even if the event
+// was missed, e.g. while the bot was offline) and bans anyone still voting no
+// after 24h.
+async function checkNotices(client) {
+  const { cross } = getEmojis(client);
+  const all = notices.all();
+
+  for (const [panelId, entry] of Object.entries(all)) {
+    let panel;
+    try {
+      const channel = await client.channels.fetch(entry.channelId);
+      panel = await channel.messages.fetch(panelId);
+    } catch {
+      continue; // panel gone or no access - leave it alone
+    }
+
+    const reaction = panel.reactions.cache.find((r) => reactionKey(r.emoji) === cross.key);
+    let stillVoting = new Set();
+    if (reaction) {
+      const users = await reaction.users.fetch().catch(() => null);
+      if (!users) continue;
+      stillVoting = new Set(users.keys());
+    }
+
+    for (const [userId, at] of Object.entries(entry.voters)) {
+      if (!stillVoting.has(userId)) {
+        await removeVoter(client, panelId, userId);
+        continue;
+      }
+
+      if (Date.now() - at >= BAN_AFTER_MS) {
+        const guild = panel.guild;
+        const banned = await guild.members
+          .ban(userId, { reason: 'Voted no on "Are we legit?" and gave no proof within 24h' })
+          .then(() => true)
+          .catch((err) => {
+            console.error(`[legit] could not ban ${userId}:`, err.message);
+            return false;
+          });
+
+        if (banned) console.log(`[legit] banned ${userId} (no vote, 24h passed)`);
+        if (reaction) await reaction.users.remove(userId).catch(() => {});
+        await removeVoter(client, panelId, userId);
+      }
+    }
+  }
+}
+
+function startLegitTimer(client) {
+  setInterval(() => {
+    checkNotices(client).catch((err) => console.error('[legit] check failed:', err));
+  }, CHECK_EVERY_MS);
+}
+
+module.exports = { handleLegitReactionAdd, handleLegitReactionRemove, startLegitTimer };
