@@ -110,6 +110,23 @@ async function addVoterNow(panelMessage, userId) {
   };
 
   entry.voters[userId] = Date.now();
+
+  // Drop anyone listed who no longer actually has the no reaction (stale entries),
+  // so they don't get mentioned.
+  try {
+    const fresh = await panelMessage.fetch();
+    const { cross } = getEmojis(client);
+    const crossReaction = fresh.reactions.cache.find((r) => reactionKey(r.emoji) === cross.key);
+    const users = crossReaction ? await crossReaction.users.fetch() : null;
+    const current = new Set(users ? users.keys() : []);
+    current.add(userId);
+    for (const id of Object.keys(entry.voters)) {
+      if (!current.has(id)) delete entry.voters[id];
+    }
+  } catch (err) {
+    console.error('[legit] could not verify voters:', err.message);
+  }
+
   const ids = Object.keys(entry.voters);
 
   const existing = entry.messageId ? await fetchNoticeMessage(client, entry) : null;
