@@ -36,6 +36,7 @@ const {
 } = require('./handlers/applicationHandlers');
 const { handleLeaderboardRoleSelect } = require('./handlers/leaderboardHandlers');
 const { handleSchematicMessage, handleStaffBoardButton } = require('./handlers/schematicHandlers');
+const { handleHelpMessage } = require('./commands/help');
 const schematics = require('./utils/schematics');
 const giveawayStats = require('./utils/giveawayStats');
 const { handleStaffBoardButton: handleStaffBoardNav } = require('./utils/staffBoards');
@@ -212,6 +213,7 @@ client.on(Events.MessageCreate, (message) => {
   handleAfkMessage(message).catch((err) => console.error('[afk] Error handling message:', err));
   handleVouchMessage(message).catch((err) => console.error('[vouches] Error handling message:', err));
   handleSchematicMessage(message).catch((err) => console.error('[schematics] Error handling message:', err));
+  handleHelpMessage(message).catch((err) => console.error('[help] Error handling message:', err));
 });
 
 client.on(Events.MessageReactionAdd, (reaction, user) => {
