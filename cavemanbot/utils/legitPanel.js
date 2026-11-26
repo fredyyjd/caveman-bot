@@ -10,7 +10,7 @@ function getEmojis(client) {
   };
 }
 
-function buildEmbed(client, yes, no) {
+function buildEmbed(client) {
   const { tick, cross } = getEmojis(client);
 
   return new EmbedBuilder()
@@ -23,11 +23,7 @@ function buildEmbed(client, yes, no) {
         '',
         `**Warning:** voting ${cross.text} without showing us proof nor providing it will result in a ban.`,
       ].join('\n')
-    )
-    .addFields({
-      name: 'Votes',
-      value: `${tick.text} **${yes}**   ${cross.text} **${no}**`,
-    });
+    );
 }
 
 module.exports = { TITLE, getEmojis, buildEmbed };
