@@ -8,7 +8,14 @@ const {
 
 const COLOR = 0x5865f2;
 const TIMEOUT_MS = 3 * 60 * 1000;
-const LOCK = '🔒';
+
+const WHO = {
+  everyone: '🟢 Everyone',
+  staff: '🔒 Staff only',
+  staffManage: '🔒 Staff or Manage Server',
+  manage: '🔒 Manage Server only',
+  admin: '👑 Admins only',
+};
 
 const CATEGORIES = [
   {
@@ -16,15 +23,15 @@ const CATEGORIES = [
     name: 'Tickets & Builds',
     intro: 'Open, manage and finish tickets and builds.',
     commands: [
-      { cmd: '/ticket close', desc: 'Close the ticket or application you are in.', staff: true },
-      { cmd: '/ticket rename', args: 'name', desc: 'Rename the current ticket.', staff: true },
-      { cmd: '/ticket add', args: 'user', desc: 'Add someone to the current ticket.', staff: true },
-      { cmd: '/payment-ticket', desc: 'Move a service ticket to the payment category.', staff: true },
-      { cmd: '/build-finish', desc: 'Ask the customer to confirm their build is done.', staff: true },
-      { cmd: '/build-leaderboard', desc: 'See how many builds each builder finished.', staff: true },
-      { cmd: '/ticket-panel', desc: 'Post the ticket panel in this channel.', staff: true },
-      { cmd: '/service-panel', desc: 'Post the services panel in this channel.', staff: true },
-      { cmd: '/application-panel', desc: 'Post the staff and builder applications panel.', staff: true },
+      { cmd: '/ticket-panel', desc: 'Posts the ticket panel in this channel.', who: 'manage' },
+      { cmd: '/service-panel', desc: 'Posts the services ticket panel in this channel.', who: 'manage' },
+      { cmd: '/application-panel', desc: 'Posts the staff and builder applications panel.', who: 'manage' },
+      { cmd: '/ticket close', desc: 'Closes the ticket or application you are in.', who: 'staff' },
+      { cmd: '/ticket rename', args: 'name', desc: 'Renames the current ticket.', who: 'staff' },
+      { cmd: '/ticket add', args: 'user', desc: 'Adds someone to the current ticket.', who: 'staff' },
+      { cmd: '/payment-ticket', desc: 'Moves a service ticket to the payment category.', who: 'staff' },
+      { cmd: '/build-finish', desc: 'Asks the customer to confirm their build is done.', who: 'staff' },
+      { cmd: '/build-leaderboard', desc: 'Shows how many builds each builder finished.', who: 'staff' },
     ],
   },
   {
@@ -32,9 +39,9 @@ const CATEGORIES = [
     name: 'Giveaways',
     intro: 'Run giveaways and pick winners.',
     commands: [
-      { cmd: '/gcreate', args: 'prize duration', desc: 'Start a giveaway. Optional winners, description and channel.', staff: true },
-      { cmd: '/gend', args: 'message_id', desc: 'End a giveaway right now and pick the winners.', staff: true },
-      { cmd: '/greroll', args: 'message_id', desc: 'Pick new winners for a giveaway that ended.', staff: true },
+      { cmd: '/gcreate', args: 'prize duration', desc: 'Starts a giveaway. You can also set winners, description and channel.', who: 'staffManage' },
+      { cmd: '/gend', args: 'message_id', desc: 'Ends a giveaway right now and picks the winners.', who: 'staffManage' },
+      { cmd: '/greroll', args: 'message_id', desc: 'Picks new winners for a giveaway that ended.', who: 'staffManage' },
     ],
   },
   {
@@ -42,12 +49,12 @@ const CATEGORIES = [
     name: 'Levels & Leaderboards',
     intro: 'XP, levels and rankings.',
     commands: [
-      { cmd: '/level rank', args: 'user', desc: 'Show your level and XP, or someone else’s.' },
-      { cmd: '/level leaderboard', args: 'page', desc: 'See the top members by level.' },
-      { cmd: '/xp-add', args: 'user amount type', desc: 'Give someone XP or levels.', staff: true },
-      { cmd: '/xp-remove', args: 'user amount type', desc: 'Take XP or levels from someone.', staff: true },
-      { cmd: '/point-leaderboard', desc: 'Show ticket points for everyone with a chosen role.', staff: true },
-      { cmd: '/staff-leaderboard', desc: 'Show the staff leaderboard.', staff: true },
+      { cmd: '/level rank', args: 'user', desc: 'Shows your level and XP, or someone else’s.', who: 'everyone' },
+      { cmd: '/level leaderboard', args: 'page', desc: 'Shows the top members by level.', who: 'everyone' },
+      { cmd: '/xp-add', args: 'user amount type', desc: 'Gives someone XP or levels.', who: 'admin' },
+      { cmd: '/xp-remove', args: 'user amount type', desc: 'Takes XP or levels from someone.', who: 'staff' },
+      { cmd: '/point-leaderboard', desc: 'Shows ticket points for everyone with a chosen role.', who: 'staff' },
+      { cmd: '/staff-leaderboard', desc: 'Shows the staff leaderboard.', who: 'staff' },
     ],
   },
   {
@@ -55,13 +62,13 @@ const CATEGORIES = [
     name: 'Vouches & Scammers',
     intro: 'Build trust and flag scammers.',
     commands: [
-      { cmd: '/vouch', args: 'user', desc: 'Vouch for someone. You can add a comment.' },
-      { cmd: '/vouchsee', args: 'user', desc: 'See the vouches someone has.' },
-      { cmd: '/vouch-leaderboard', desc: 'See who has the most vouches.' },
-      { cmd: '/vouch-send', args: 'user', desc: 'Ask someone to vouch for you.', staff: true },
-      { cmd: '/staff-vouch-leaderboard', desc: 'Vouches and scam reports for every user.', staff: true },
-      { cmd: '/scam-vouch add', args: 'user', desc: 'Mark a user as a scammer and give them the scammer role.', staff: true },
-      { cmd: '/scam-vouch remove', args: 'user', desc: 'Remove the scammer mark from a user.', staff: true },
+      { cmd: '/vouch', args: 'user', desc: 'Vouches for someone. You can add a comment.', who: 'everyone' },
+      { cmd: '/vouchsee', args: 'user', desc: 'Shows the vouches someone has.', who: 'everyone' },
+      { cmd: '/vouch-leaderboard', desc: 'Shows who has the most vouches.', who: 'everyone' },
+      { cmd: '/vouch-send', args: 'user', desc: 'Asks someone to vouch for you.', who: 'staff' },
+      { cmd: '/staff-vouch-leaderboard', desc: 'Shows vouches and scam reports for every user.', who: 'staff' },
+      { cmd: '/scam-vouch add', args: 'user', desc: 'Marks a user as a scammer and gives them the scammer role.', who: 'staff' },
+      { cmd: '/scam-vouch remove', args: 'user', desc: 'Removes the scammer mark from a user.', who: 'staff' },
     ],
   },
   {
@@ -69,10 +76,10 @@ const CATEGORIES = [
     name: 'Games & Fun',
     intro: 'Quick games to play in chat.',
     commands: [
-      { cmd: '/coinflip', desc: 'Pick heads or tails and flip a coin.' },
-      { cmd: '/tictactoe', args: 'user', desc: 'Challenge someone to tic tac toe.' },
-      { cmd: '/guessthenumber', desc: 'Guess the number the bot is thinking of.' },
-      { cmd: '/groupguess', desc: 'Start a number guessing game everyone can join.' },
+      { cmd: '/coinflip', desc: 'Flips a coin after you pick heads or tails.', who: 'everyone' },
+      { cmd: '/tictactoe', args: 'user', desc: 'Challenges someone to tic tac toe.', who: 'everyone' },
+      { cmd: '/guessthenumber', desc: 'Starts a number guessing game just for you.', who: 'everyone' },
+      { cmd: '/groupguess', desc: 'Starts a number guessing game everyone can join.', who: 'everyone' },
     ],
   },
   {
@@ -80,10 +87,10 @@ const CATEGORIES = [
     name: 'Utility',
     intro: 'Handy commands for everyone.',
     commands: [
-      { cmd: '/afk', args: 'reason', desc: 'Set yourself as AFK. The bot tells people who ping you.' },
-      { cmd: '/membercount', desc: 'Show how many members the server has.' },
-      { cmd: '/serverinfo', desc: 'Show information about the server.' },
-      { cmd: '/help', desc: 'Open this menu. You can also type !help.' },
+      { cmd: '/afk', args: 'reason', desc: 'Sets you as AFK. The bot tells people who ping you.', who: 'everyone' },
+      { cmd: '/membercount', desc: 'Shows how many members the server has.', who: 'everyone' },
+      { cmd: '/serverinfo', desc: 'Shows information about the server.', who: 'everyone' },
+      { cmd: '/cavehelp', desc: 'Opens this menu. You can also type !cavehelp.', who: 'everyone' },
     ],
   },
   {
@@ -91,13 +98,13 @@ const CATEGORIES = [
     name: 'Admin Tools',
     intro: 'Server setup and moderation.',
     commands: [
-      { cmd: '/embed', desc: 'Post a custom embed with your own title, text, color and images.', staff: true },
-      { cmd: '/purge', args: 'amount', desc: 'Delete up to 100 recent messages in this channel.', staff: true },
-      { cmd: '/sticky-roles', args: 'user', desc: 'Keep someone’s roles if they leave and rejoin.', staff: true },
-      { cmd: '/reaction-roles-panel', desc: 'Post the reaction roles panel in this channel.', staff: true },
-      { cmd: '/helper guide', desc: 'Post the helper guide.', staff: true },
-      { cmd: '/builder guide', desc: 'Post the builder guide.', staff: true },
-      { cmd: '/guide config', desc: 'Edit the text of the helper and builder guides.', staff: true },
+      { cmd: '/embed', desc: 'Posts a custom embed with your own title, text, color and images.', who: 'admin' },
+      { cmd: '/purge', args: 'amount', desc: 'Deletes up to 100 recent messages in this channel.', who: 'admin' },
+      { cmd: '/sticky-roles', args: 'user', desc: 'Keeps someone’s roles if they leave and rejoin.', who: 'admin' },
+      { cmd: '/reaction-roles-panel', desc: 'Posts the reaction roles panel in this channel.', who: 'manage' },
+      { cmd: '/helper guide', desc: 'Posts the helper guide.', who: 'admin' },
+      { cmd: '/builder guide', desc: 'Posts the builder guide.', who: 'admin' },
+      { cmd: '/guide config', desc: 'Edits the text of the helper and builder guides.', who: 'admin' },
     ],
   },
 ];
@@ -119,18 +126,17 @@ function homeEmbed(client) {
         '',
         lines.join('\n\n'),
         '',
-        `${LOCK} next to a command means it is for staff only.`,
+        `Every command shows who can use it:\n${WHO.everyone}  ${WHO.staff}  ${WHO.manage}  ${WHO.admin}`,
       ].join('\n')
     )
-    .setFooter({ text: `Page 1/${TOTAL_PAGES} • Type !help or /help anytime` });
+    .setFooter({ text: `Page 1/${TOTAL_PAGES} • Type !cavehelp anytime` });
 }
 
 function categoryEmbed(client, categoryIndex) {
   const category = CATEGORIES[categoryIndex];
   const body = category.commands.map((c) => {
     const args = c.args ? ` ${c.args.split(' ').map((a) => `\`${a}\``).join(' ')}` : '';
-    const lock = c.staff ? ` ${LOCK}` : '';
-    return `**${c.cmd}**${args}${lock}\n-# ${c.desc}`;
+    return `**${c.cmd}**${args}\n${c.desc}\n-# ${WHO[c.who]}`;
   });
 
   return new EmbedBuilder()
@@ -138,7 +144,7 @@ function categoryEmbed(client, categoryIndex) {
     .setTitle(`${category.icon} ${category.name}`)
     .setThumbnail(client.user.displayAvatarURL())
     .setDescription([`*${category.intro}*`, '', body.join('\n\n')].join('\n'))
-    .setFooter({ text: `Page ${categoryIndex + 2}/${TOTAL_PAGES} • ${LOCK} = staff only` });
+    .setFooter({ text: `Page ${categoryIndex + 2}/${TOTAL_PAGES} • Type !cavehelp anytime` });
 }
 
 function buildEmbed(client, page) {
@@ -175,7 +181,7 @@ function attachPaging(sentMessage, ownerId, client) {
 
   collector.on('collect', async (i) => {
     if (i.user.id !== ownerId) {
-      return i.reply({ content: 'Run /help or !help to open your own menu.', ephemeral: true });
+      return i.reply({ content: 'Run /cavehelp or !cavehelp to open your own menu.', ephemeral: true });
     }
 
     page = i.customId === 'help_next' ? Math.min(page + 1, TOTAL_PAGES - 1) : Math.max(page - 1, 0);
@@ -195,7 +201,7 @@ function attachPaging(sentMessage, ownerId, client) {
 
 async function handleHelpMessage(message) {
   if (message.author.bot || !message.guild) return;
-  if (message.content.trim().toLowerCase() !== '!help') return;
+  if (message.content.trim().toLowerCase() !== '!cavehelp') return;
 
   const sent = await message.reply({
     embeds: [buildEmbed(message.client, 0)],
@@ -208,7 +214,7 @@ async function handleHelpMessage(message) {
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('help')
+    .setName('cavehelp')
     .setDescription('Show all commands')
     .setDMPermission(false),
 
