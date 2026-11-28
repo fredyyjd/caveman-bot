@@ -18,8 +18,24 @@ const applicationQuestions = require('../data/applicationQuestions');
 const { runApplicationFlow } = require('../utils/applicationFlow');
 const { buildDecisionRow } = require('../utils/applicationDecision');
 const { createPrivateChannel } = require('../utils/ticketCreation');
-const { isStaff } = require('../utils/permissions');
 const { noClaimRow } = require('../utils/ticketActions');
+const { PermissionFlagsBits } = require('discord.js');
+
+// Applications (staff, builder, partner manager, media manager) are handled by
+// HIGH STAFF only, NOT the regular staff team. High staff = Administrator, or
+// the role pinged for applications (applicationCategories.<type>.pingRoleId),
+// or config.alwaysCanTypeRoleId.
+function isHighStaff(member) {
+  if (!member) return false;
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
+  const roleIds = new Set(
+    Object.values(config.applicationCategories || {})
+      .map((c) => c.pingRoleId)
+      .filter(Boolean)
+  );
+  if (config.alwaysCanTypeRoleId) roleIds.add(config.alwaysCanTypeRoleId);
+  return [...roleIds].some((id) => member.roles.cache.has(id));
+}
 
 async function handleApplicationSelect(interaction) {
   // Defer immediately, before any async work (channel fetch, DM send) —
@@ -213,8 +229,8 @@ async function processDeny(interaction, appId, meta, reason) {
 }
 
 async function handleApplicationAccept(interaction) {
-  if (!isStaff(interaction.member)) {
-    return interaction.reply({ content: 'Only staff can accept/deny applications.', ephemeral: true });
+  if (!isHighStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only high staff can accept/deny applications.', ephemeral: true });
   }
   const { appId, meta } = getOpenApplication(interaction);
   if (!meta) {
@@ -225,8 +241,8 @@ async function handleApplicationAccept(interaction) {
 }
 
 async function handleApplicationAcceptReason(interaction) {
-  if (!isStaff(interaction.member)) {
-    return interaction.reply({ content: 'Only staff can accept/deny applications.', ephemeral: true });
+  if (!isHighStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only high staff can accept/deny applications.', ephemeral: true });
   }
   const { appId, meta } = getOpenApplication(interaction);
   if (!meta) {
@@ -236,6 +252,9 @@ async function handleApplicationAcceptReason(interaction) {
 }
 
 async function handleApplicationAcceptReasonModal(interaction) {
+  if (!isHighStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only high staff can accept/deny applications.', ephemeral: true });
+  }
   const { appId, meta } = getOpenApplication(interaction);
   if (!meta) {
     return interaction.reply({ content: 'This application is no longer available (already handled, or the bot restarted).', ephemeral: true });
@@ -246,8 +265,8 @@ async function handleApplicationAcceptReasonModal(interaction) {
 }
 
 async function handleApplicationDeny(interaction) {
-  if (!isStaff(interaction.member)) {
-    return interaction.reply({ content: 'Only staff can accept/deny applications.', ephemeral: true });
+  if (!isHighStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only high staff can accept/deny applications.', ephemeral: true });
   }
   const { appId, meta } = getOpenApplication(interaction);
   if (!meta) {
@@ -257,8 +276,8 @@ async function handleApplicationDeny(interaction) {
 }
 
 async function handleApplicationDenyReason(interaction) {
-  if (!isStaff(interaction.member)) {
-    return interaction.reply({ content: 'Only staff can accept/deny applications.', ephemeral: true });
+  if (!isHighStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only high staff can accept/deny applications.', ephemeral: true });
   }
   const { appId, meta } = getOpenApplication(interaction);
   if (!meta) {
@@ -268,6 +287,9 @@ async function handleApplicationDenyReason(interaction) {
 }
 
 async function handleApplicationDenyReasonModal(interaction) {
+  if (!isHighStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only high staff can accept/deny applications.', ephemeral: true });
+  }
   const { appId, meta } = getOpenApplication(interaction);
   if (!meta) {
     return interaction.reply({ content: 'This application is no longer available (already handled, or the bot restarted).', ephemeral: true });
@@ -281,8 +303,8 @@ async function handleApplicationDenyReasonModal(interaction) {
 // applicationCategories.<type>.ticketCategoryId), pinging the same role that
 // gets pinged for that application type. This ticket has no Claim button.
 async function handleApplicationOpenTicket(interaction) {
-  if (!isStaff(interaction.member)) {
-    return interaction.reply({ content: 'Only staff can open a ticket for an application.', ephemeral: true });
+  if (!isHighStaff(interaction.member)) {
+    return interaction.reply({ content: 'Only high staff can open a ticket for an application.', ephemeral: true });
   }
 
   const { appId, meta } = getOpenApplication(interaction);
@@ -308,7 +330,8 @@ async function handleApplicationOpenTicket(interaction) {
     name: `${appConfig.prefix}-${applicant ? applicant.username : meta.openerId}`,
     parentId: appCfg.ticketCategoryId,
     openerId: meta.openerId,
-    roleIds: [config.staffRoleId, appCfg.pingRoleId],
+    // High staff only - the regular staff team (config.staffRoleId) must NOT see application tickets.
+    roleIds: [appCfg.pingRoleId || config.alwaysCanTypeRoleId],
   });
 
   // Question text is bot-authored, and answers are wrapped in markdown; each answer is the
