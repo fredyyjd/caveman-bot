@@ -157,10 +157,49 @@ async function finalizeDecision(interaction, action, meta, reason) {
     .catch(() => {});
 }
 
+// Looks up the application behind a button/modal. Normally it's in
+// data/tickets.json, but if that record is missing (file reset, bot moved,
+// restart, etc.) it is REBUILT from the submission embed on the review
+// message itself (title, "User ID" footer, answers), so Accept / Deny /
+// Open a Ticket keep working instead of failing.
+function rebuildApplicationFromMessage(message) {
+  const embed = message && message.embeds && message.embeds[0];
+  if (!embed || !embed.title || !embed.title.endsWith(' — Submission')) return null;
+
+  const label = embed.title.replace(/ — Submission$/, '');
+  const categoryKey = Object.keys(applicationQuestions).find(
+    (key) => applicationQuestions[key].label === label
+  );
+  if (!categoryKey) return null;
+
+  const openerId = ((embed.footer && embed.footer.text) || '').match(/\d{17,20}/)?.[0];
+  if (!openerId) return null;
+
+  const answers = (embed.description || '')
+    .split(/\n\n(?=\*\*\d+\. )/)
+    .map((part) => part.match(/^\*\*\d+\. ([\s\S]*?)\*\*\n([\s\S]*)$/))
+    .filter(Boolean)
+    .map((m) => ({ question: m[1], answer: m[2] }));
+
+  return {
+    type: 'application',
+    category: categoryKey,
+    openerId,
+    openedAt: message.createdTimestamp || Date.now(),
+    answers,
+  };
+}
+
 function getOpenApplication(interaction) {
   const appId = getAppId(interaction);
-  const meta = ticketStore.get(appId);
-  if (!meta || meta.type !== 'application') return { appId, meta: null };
+  let meta = ticketStore.get(appId);
+
+  if (!meta || meta.type !== 'application') {
+    meta = rebuildApplicationFromMessage(interaction.message);
+    if (!meta) return { appId, meta: null };
+    ticketStore.add(appId, meta);
+  }
+
   return { appId, meta };
 }
 
